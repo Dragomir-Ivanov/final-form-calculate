@@ -9,9 +9,21 @@ const createDecorator = <FormValues: FormValuesShape>(
   ...calculations: Calculation[]
 ): Decorator<FormValues> => (form: FormApi<FormValues>) => {
   let previousValues = {}
+  const hints = {
+    skipNextUpdate: false
+  }
+  const setHints = (newHints) => {
+    Object.assign(hints, newHints)
+  }
   const unsubscribe = form.subscribe(
     ({ values }) => {
       form.batch(() => {
+        if (hints.skipNextUpdate) {
+          hints.skipNextUpdate = false
+          previousValues = values
+          return
+        }
+
         const runUpdates = (
           field: string,
           isEqual: (any, any) => boolean,
@@ -21,24 +33,30 @@ const createDecorator = <FormValues: FormValuesShape>(
           const previous = previousValues && getIn(previousValues, field)
           if (!isEqual(next, previous)) {
             if (typeof updates === 'function') {
-              const results = updates(next, field, values, previousValues)
+              const results = updates(
+                next,
+                field,
+                values,
+                previousValues,
+                setHints
+              )
               if (isPromise(results)) {
-                results.then(resolved => {
-                  Object.keys(resolved).forEach(destField => {
+                results.then((resolved) => {
+                  Object.keys(resolved).forEach((destField) => {
                     form.change(destField, resolved[destField])
                   })
                 })
               } else {
-                Object.keys(results).forEach(destField => {
+                Object.keys(results).forEach((destField) => {
                   form.change(destField, results[destField])
                 })
               }
             } else {
-              Object.keys(updates).forEach(destField => {
+              Object.keys(updates).forEach((destField) => {
                 const update = updates[destField]
                 const result = update(next, values, previousValues)
                 if (isPromise(result)) {
-                  result.then(resolved => {
+                  result.then((resolved) => {
                     form.change(destField, resolved)
                   })
                 } else {
@@ -61,13 +79,13 @@ const createDecorator = <FormValues: FormValuesShape>(
             } else if (typeof field !== 'string') {
               // field is a either array or regex
               const matches = Array.isArray(field)
-                ? name =>
+                ? (name) =>
                     ~field.indexOf(name) ||
                     field.findIndex(
-                      f => f instanceof RegExp && (f: RegExp).test(name)
+                      (f) => f instanceof RegExp && (f: RegExp).test(name)
                     ) !== -1
-                : name => (field: RegExp).test(name)
-              fields.forEach(fieldName => {
+                : (name) => (field: RegExp).test(name)
+              fields.forEach((fieldName) => {
                 if (
                   (updateOnPristine && matches(fieldName)) ||
                   (!updateOnPristine &&

@@ -106,7 +106,7 @@ const undecorate = decorator(form)
   - [`Calculation: { field: FieldPattern, updates: Updates }`](#calculation--field-fieldpattern-updates-updates-)
   - [`FieldName: string`](#fieldname-string)
   - [`FieldPattern: FieldName | RegExp`](#fieldpattern-fieldname--regexp)
-  - [`Updates: { [FieldName]: (value: any, allValues: Object, prevValues: Object) => any }`](#updates--fieldname-value-any-allvalues-object--any-)
+  - [`Updates: { [FieldName]: (value: any, allValues: Object, prevValues: Object, setHints: Hints) => any }`](#updates--fieldname-value-any-allvalues-object--any-)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
 
@@ -144,6 +144,70 @@ Either an object of updater functions or a function that generates updates for m
 
 Updater functions for each calculated field.
 
-### `UpdatesForAll: (value: any, field: string, allValues: Object, prevValues: Object) => Promise | { [FieldName]: any }`
+### `UpdatesForAll: (value: any, field: string, allValues: Object, prevValues: Object, setHints: {skipNextUpdate: boolean}) => Promise | { [FieldName]: any }`
 
 Takes the value and name of the field that just changed, as well as all the values, and returns an object of fields and new values.
+
+With `setHints`, you can instruct `final-form-calculate` to skip calling next `Updates` cycle.
+You can do that with `skipHints({skipNextUpdate: true})` in your `updates` handler.
+
+The reason behind this feature is, in certain scenarious you may have closed loops of fields dependency. E.g. field `foo` updates field `bar`, and field `bar` updates field `foo`. 
+This will result in infinite loop of updates. By calling this function selectively in the body of `updates`, `foo` will update `bar`, but updates on next update cycle will not be called, so `bar` will not update foo.
+
+When using this, make sure you `update` all fields that are dependant on the current field, even if they are recursive dependency.
+
+Example:
+```
+{
+  field: "foo",
+  updates: {
+    bar: "foo updated me",
+  }
+},{
+  field: "bar",
+  updates: {
+    baz: "bar updated me"
+  }
+}
+```
+
+Updates on `foo` indirecly will update `baz` in 2 update cycles.
+
+When using:
+```
+{
+  field: "foo",
+  updates: (value, field, allValues, prevValues, setHints) => {
+    setHints({ skipNextUpdate: true })
+    return {
+      bar: "foo updated me",
+    }
+  }
+},{
+  field: "bar",
+  updates: {
+    baz: "bar updated me"
+  }
+}
+```
+
+Updates on `foo` will not trigger update on `baz`. 
+
+In order to make such updates, make them directly from `foo`.
+```
+{
+  field: "foo",
+  updates: (value, field, allValues, prevValues, setHints) => {
+    setHints({ skipNextUpdate: true })
+    return {
+      bar: "foo updated me",
+      baz: "foo updated me",
+    }
+  }
+},{
+  field: "bar",
+  updates: {
+    baz: "bar updated me"
+  }
+}
+```

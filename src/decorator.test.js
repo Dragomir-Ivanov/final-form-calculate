@@ -108,7 +108,7 @@ describe('decorator', () => {
     const decorator = createDecorator({
       field: 'foo',
       updates: {
-        bar: fooValue => `${fooValue}bar`
+        bar: (fooValue) => `${fooValue}bar`
       }
     })
     const unsubscribe = decorator(form)
@@ -151,7 +151,7 @@ describe('decorator', () => {
     const decorator = createDecorator({
       field: /f?o/,
       updates: {
-        bar: fooValue => `${fooValue}bar`
+        bar: (fooValue) => `${fooValue}bar`
       }
     })
     const unsubscribe = decorator(form)
@@ -194,7 +194,7 @@ describe('decorator', () => {
     const decorator = createDecorator({
       field: ['cat', 'dog', 'rat', 'foo', 'hog'],
       updates: {
-        bar: fooValue => `${fooValue}bar`
+        bar: (fooValue) => `${fooValue}bar`
       }
     })
     const unsubscribe = decorator(form)
@@ -238,7 +238,7 @@ describe('decorator', () => {
     const decorator = createDecorator({
       field: 'foo',
       updates: {
-        bar: fooValue => promise
+        bar: (fooValue) => promise
       }
     })
     const unsubscribe = decorator(form)
@@ -327,7 +327,7 @@ describe('decorator', () => {
     const decorator = createDecorator({
       field: 'foo',
       updates: {
-        bar: fooValue => `${fooValue}bar`
+        bar: (fooValue) => `${fooValue}bar`
       }
     })
     const unsubscribe = decorator(form)
@@ -597,7 +597,10 @@ describe('decorator', () => {
         (a === undefined ? undefined : a.id) ===
         (b === undefined ? undefined : b.id),
       updates: {
-        bar: fooValue => ({ id: fooValue.id + 1, name: `${fooValue.name}bar` })
+        bar: (fooValue) => ({
+          id: fooValue.id + 1,
+          name: `${fooValue.name}bar`
+        })
       }
     })
     const unsubscribe = decorator(form)
@@ -821,5 +824,221 @@ describe('decorator', () => {
     expect(spy.mock.calls[3][0].values).toEqual({
       list: [{ items: [1, 20, 30], total: 60 }]
     })
+  })
+
+  it('skipNextUpdate, should not update one field when another changes', () => {
+    const form = createForm({ onSubmit: onSubmitMock })
+    const spy = jest.fn()
+    const foo = jest.fn()
+    const bar = jest.fn()
+    const cvor = jest.fn()
+    form.subscribe(spy, { values: true })
+    form.registerField('foo', foo, { value: true })
+    form.registerField('bar', bar, { value: true })
+    form.registerField('cvor', cvor, { value: true })
+    const decorator = createDecorator(
+      {
+        field: 'foo',
+        updates: (fooValue, name, all, prev, setOptions) => {
+          setOptions({ skipNextUpdate: true })
+          return {
+            bar: `${fooValue}bar`
+          }
+        }
+      },
+      {
+        field: 'bar',
+        updates: (barValue, name, all, prev, setOptions) => {
+          return {
+            cvor: `${barValue}bar`
+          }
+        }
+      }
+    )
+    const unsubscribe = decorator(form)
+    expect(typeof unsubscribe).toBe('function')
+
+    expect(spy).toHaveBeenCalled()
+    expect(spy).toHaveBeenCalledTimes(1)
+    expect(spy.mock.calls[0][0].values).toEqual({})
+
+    expect(foo).toHaveBeenCalled()
+    expect(foo).toHaveBeenCalledTimes(1)
+    expect(foo.mock.calls[0][0].value).toBeUndefined()
+
+    expect(bar).toHaveBeenCalled()
+    expect(bar).toHaveBeenCalledTimes(1)
+    expect(bar.mock.calls[0][0].value).toBeUndefined()
+
+    // change foo (should trigger calculation on bar)
+    form.change('foo', 'baz')
+
+    expect(spy).toHaveBeenCalledTimes(3)
+    expect(spy.mock.calls[1][0].values).toEqual({ foo: 'baz' })
+    expect(spy.mock.calls[2][0].values).toEqual({ foo: 'baz', bar: 'bazbar' })
+
+    expect(foo).toHaveBeenCalledTimes(2)
+    expect(foo.mock.calls[1][0].value).toBe('baz')
+
+    expect(bar).toHaveBeenCalledTimes(2)
+    expect(bar.mock.calls[1][0].value).toBe('bazbar')
+  })
+})
+
+describe('skipNextUpdate', () => {
+  it('should update one field when another changes', () => {
+    const form = createForm({ onSubmit: onSubmitMock })
+    const spy = jest.fn()
+    const foo = jest.fn()
+    const bar = jest.fn()
+    const cvor = jest.fn()
+    form.subscribe(spy, { values: true })
+    form.registerField('foo', foo, { value: true })
+    form.registerField('bar', bar, { value: true })
+    form.registerField('cvor', cvor, { value: true })
+    const decorator = createDecorator(
+      {
+        field: 'foo',
+        updates: (fooValue, name, all, prev, setOptions) => {
+          return {
+            bar: `${fooValue}bar`
+          }
+        }
+      },
+      {
+        field: 'bar',
+        updates: (barValue, name, all, prev, setOptions) => {
+          return {
+            cvor: `${barValue}cvor`
+          }
+        }
+      }
+    )
+    const unsubscribe = decorator(form)
+    expect(typeof unsubscribe).toBe('function')
+
+    expect(spy).toHaveBeenCalled()
+    expect(spy).toHaveBeenCalledTimes(1)
+    expect(spy.mock.calls[0][0].values).toEqual({})
+
+    expect(foo).toHaveBeenCalled()
+    expect(foo).toHaveBeenCalledTimes(1)
+    expect(foo.mock.calls[0][0].value).toBeUndefined()
+
+    expect(bar).toHaveBeenCalled()
+    expect(bar).toHaveBeenCalledTimes(1)
+    expect(bar.mock.calls[0][0].value).toBeUndefined()
+
+    expect(cvor).toHaveBeenCalled()
+    expect(cvor).toHaveBeenCalledTimes(1)
+    expect(cvor.mock.calls[0][0].value).toBeUndefined()
+
+    // change foo (should trigger calculation on bar)
+    form.change('foo', 'baz')
+
+    expect(spy).toHaveBeenCalledTimes(4)
+    expect(spy.mock.calls[1][0].values).toEqual({ foo: 'baz' })
+    expect(spy.mock.calls[2][0].values).toEqual({ foo: 'baz', bar: 'bazbar' })
+    expect(spy.mock.calls[3][0].values).toEqual({
+      foo: 'baz',
+      bar: 'bazbar',
+      cvor: 'bazbarcvor'
+    })
+
+    expect(foo).toHaveBeenCalledTimes(2)
+    expect(foo.mock.calls[1][0].value).toBe('baz')
+
+    expect(bar).toHaveBeenCalledTimes(2)
+    expect(bar.mock.calls[1][0].value).toBe('bazbar')
+
+    expect(cvor).toHaveBeenCalledTimes(2)
+    expect(cvor.mock.calls[1][0].value).toBe('bazbarcvor')
+  })
+
+  it('should skip next update when another changes, should resume for the next one', () => {
+    const form = createForm({ onSubmit: onSubmitMock })
+    const spy = jest.fn()
+    const foo = jest.fn()
+    const bar = jest.fn()
+    const cvor = jest.fn()
+    form.subscribe(spy, { values: true })
+    form.registerField('foo', foo, { value: true })
+    form.registerField('bar', bar, { value: true })
+    form.registerField('cvor', cvor, { value: true })
+    const decorator = createDecorator(
+      {
+        field: 'foo',
+        updates: (fooValue, name, all, prev, setHints) => {
+          setHints({ skipNextUpdate: true })
+          return {
+            bar: `${fooValue}bar`
+          }
+        }
+      },
+      {
+        field: 'bar',
+        updates: (barValue, name, all, prev, setOptions) => {
+          return {
+            cvor: `${barValue}cvor`
+          }
+        }
+      }
+    )
+    const unsubscribe = decorator(form)
+    expect(typeof unsubscribe).toBe('function')
+
+    expect(spy).toHaveBeenCalled()
+    expect(spy).toHaveBeenCalledTimes(1)
+    expect(spy.mock.calls[0][0].values).toEqual({})
+
+    expect(foo).toHaveBeenCalled()
+    expect(foo).toHaveBeenCalledTimes(1)
+    expect(foo.mock.calls[0][0].value).toBeUndefined()
+
+    expect(bar).toHaveBeenCalled()
+    expect(bar).toHaveBeenCalledTimes(1)
+    expect(bar.mock.calls[0][0].value).toBeUndefined()
+
+    expect(cvor).toHaveBeenCalled()
+    expect(cvor).toHaveBeenCalledTimes(1)
+    expect(cvor.mock.calls[0][0].value).toBeUndefined()
+
+    // change foo (should trigger calculation on bar, should not trigger calculatiuon of cvor)
+    form.change('foo', 'baz')
+
+    expect(spy).toHaveBeenCalledTimes(3)
+    expect(spy.mock.calls[1][0].values).toEqual({ foo: 'baz' })
+    expect(spy.mock.calls[2][0].values).toEqual({ foo: 'baz', bar: 'bazbar' })
+
+    expect(foo).toHaveBeenCalledTimes(2)
+    expect(foo.mock.calls[1][0].value).toBe('baz')
+
+    expect(bar).toHaveBeenCalledTimes(2)
+    expect(bar.mock.calls[1][0].value).toBe('bazbar')
+
+    expect(cvor).toHaveBeenCalled()
+    expect(cvor).toHaveBeenCalledTimes(1)
+    expect(cvor.mock.calls[0][0].value).toBeUndefined()
+
+    // change foo (should not trigger calculatiuon of cvor)
+    form.change('bar', 'baz')
+
+    expect(spy).toHaveBeenCalledTimes(5)
+    expect(spy.mock.calls[3][0].values).toEqual({ foo: 'baz', bar: 'baz' })
+    expect(spy.mock.calls[4][0].values).toEqual({
+      foo: 'baz',
+      bar: 'baz',
+      cvor: 'bazcvor'
+    })
+
+    expect(foo).toHaveBeenCalledTimes(2)
+    expect(foo.mock.calls[1][0].value).toBe('baz')
+
+    expect(bar).toHaveBeenCalledTimes(3)
+    expect(bar.mock.calls[2][0].value).toBe('baz')
+
+    expect(cvor).toHaveBeenCalled()
+    expect(cvor).toHaveBeenCalledTimes(2)
+    expect(cvor.mock.calls[1][0].value).toBe('bazcvor')
   })
 })
